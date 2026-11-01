@@ -1,0 +1,12 @@
+{
+  "name": "ai-coach",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Coach sports training planner",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
