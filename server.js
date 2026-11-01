@@ -276,7 +276,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`AI Coach เปิดแล้วที่ http://localhost:${PORT}`);
   console.log(`Gemini API: ${GEMINI_API_KEY ? `พร้อม (${MODEL})` : 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน .env'}`);
 });
