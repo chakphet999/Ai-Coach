@@ -14,3 +14,9 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.8-flash
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESET_EMAIL_FROM
+        sync: false
+      - key: APP_BASE_URL
+        value: https://ai-coach-fwra.onrender.com

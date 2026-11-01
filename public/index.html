@@ -17,8 +17,23 @@
         <label id="nameField" class="hidden">ชื่อที่ใช้แสดง<input id="authName" type="text" maxlength="50" autocomplete="name" placeholder="เช่น ก้อง"></label>
         <label>อีเมล<input id="authEmail" type="email" required autocomplete="email" placeholder="name@example.com"></label>
         <label>รหัสผ่าน<input id="authPassword" type="password" required minlength="8" maxlength="128" autocomplete="current-password" placeholder="อย่างน้อย 8 ตัวอักษร"></label>
+        <button class="auth-link" id="forgotPasswordLink" type="button">ลืมรหัสผ่าน?</button>
         <div class="auth-error" id="authError" role="alert"></div>
         <button class="button button-primary auth-submit" id="authSubmit" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <form id="forgotPasswordForm" class="hidden">
+        <label>อีเมลที่ใช้สมัคร<input id="forgotEmail" type="email" required autocomplete="email" placeholder="name@example.com"></label>
+        <div class="auth-error" id="forgotPasswordMessage" role="status" aria-live="polite"></div>
+        <button class="button button-primary auth-submit" id="forgotPasswordSubmit" type="submit">ส่งลิงก์ตั้งรหัสผ่านใหม่</button>
+        <button class="auth-link auth-link-back" id="backToLogin" type="button">กลับไปเข้าสู่ระบบ</button>
+      </form>
+      <form id="resetPasswordForm" class="hidden">
+        <input id="resetToken" type="hidden">
+        <label>รหัสผ่านใหม่<input id="newPassword" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร"></label>
+        <label>ยืนยันรหัสผ่านใหม่<input id="confirmPassword" type="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="กรอกรหัสผ่านอีกครั้ง"></label>
+        <div class="auth-error" id="resetPasswordMessage" role="status" aria-live="polite"></div>
+        <button class="button button-primary auth-submit" id="resetPasswordSubmit" type="submit">บันทึกรหัสผ่านใหม่</button>
+        <button class="auth-link auth-link-back" id="resetRequestNewLink" type="button">ขอลิงก์รีเซ็ตใหม่</button>
       </form>
       <div class="auth-foot">บัญชีและประวัติจะถูกเก็บในโปรเจกต์ที่รันบนเครื่องนี้</div>
     </div>
@@ -35,7 +50,7 @@
         <button class="nav-link" data-page="log">＋ <span>บันทึกการฝึก</span></button>
         <button class="nav-link" data-page="history">↻ <span>ประวัติ</span></button>
       </nav>
-      <div class="side-status"><span id="statusDot" class="status-dot"></span><span id="statusText">กำลังตรวจสอบ AI Coach…</span></div>
+      <div class="side-status"><span id="statusDot" class="status-dot"></span><span id="statusText">กำลังตรวจสอบ Gemini…</span></div>
       <div class="side-user"><div class="avatar" id="userAvatar">A</div><div class="user-copy"><strong id="sideUserName">นักกีฬา</strong><small id="sideUserEmail"></small></div></div>
     </aside>
 
@@ -43,7 +58,7 @@
       <header class="topbar"><div><div class="overline" id="todayLabel">AI COACH</div><h1 id="pageTitle">ภาพรวมการฝึก</h1></div><div class="top-user"><span class="status-dot" id="topStatusDot"></span><span id="modelText">Gemini</span><span class="top-divider"></span><span id="topUserName"></span><button class="logout-icon" id="logoutButton" type="button" title="ออกจากระบบ" aria-label="ออกจากระบบ">ออกจากระบบ ↗</button></div></header>
 
       <section class="page active" id="page-overview">
-        <div class="welcome-banner"><div class="welcome-copy"><span class="tag">✦ AI COACH</span><h2>สวัสดี <span id="welcomeName">นักกีฬา</span> 👋</h2><p>เลือกกีฬา ตั้งเป้าหมาย แล้วให้ AI Coach ช่วยปรับแผนจากประวัติการฝึกของคุณ</p><button class="button button-lime" data-goto="planner" type="button">เริ่มสร้างแผน <span>→</span></button></div><div class="banner-orbit" aria-hidden="true"><span>COACH</span></div></div>
+        <div class="welcome-banner"><div class="welcome-copy"><span class="tag">✦ AI COACH</span><h2>สวัสดี <span id="welcomeName">นักกีฬา</span> 👋</h2><p>เลือกกีฬา ตั้งเป้าหมาย แล้วให้ AI Coach ช่วยปรับแผนจากประวัติการฝึกของคุณ</p><button class="button button-lime" data-goto="planner" type="button">เริ่มสร้างแผน <span>→</span></button></div><div class="banner-orbit" aria-hidden="true"><span>AI</span></div></div>
         <div class="stat-grid">
           <article class="stat-card"><span class="stat-icon">✦</span><div class="stat-label">แผนที่สร้าง</div><div class="stat-value" id="planCount">0</div><div class="stat-note">บันทึกไว้ในบัญชีของคุณ</div></article>
           <article class="stat-card"><span class="stat-icon">⏱</span><div class="stat-label">การฝึกที่บันทึก</div><div class="stat-value" id="workoutCount">0</div><div class="stat-note">รายการทั้งหมด</div></article>

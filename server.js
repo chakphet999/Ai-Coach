@@ -17,13 +17,19 @@ if (fs.existsSync(envFile)) {
 }
 
 const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESET_EMAIL_FROM = process.env.RESET_EMAIL_FROM || '';
+const APP_BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const DATA_FILE = path.join(DATA_DIR, 'app-data.json');
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 const sessions = new Map();
+const resetRequestTimes = new Map();
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let database = { users: [], workouts: [], plans: [] };
@@ -31,6 +37,7 @@ if (fs.existsSync(DATA_FILE)) {
   try { database = { ...database, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }; }
   catch { throw new Error('อ่าน data/app-data.json ไม่ได้ กรุณาตรวจสอบไฟล์ข้อมูล'); }
 }
+if (!Array.isArray(database.passwordResets)) database.passwordResets = [];
 
 const SPORTS = {
   running: 'วิ่ง', football: 'ฟุตบอล', basketball: 'บาสเกตบอล', badminton: 'แบดมินตัน',
@@ -99,6 +106,53 @@ function requireUser(req, res) {
   return user;
 }
 function validEmail(email) { return typeof email === 'string' && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+function allowPasswordReset(email) {
+  const now = Date.now();
+  for (const [key, times] of resetRequestTimes) {
+    const recent = times.filter(time => now - time < 60 * 60 * 1000);
+    if (recent.length) resetRequestTimes.set(key, recent);
+    else resetRequestTimes.delete(key);
+  }
+  const recent = resetRequestTimes.get(email) || [];
+  if (recent.length >= 3) return false;
+  resetRequestTimes.set(email, [...recent, now]);
+  return true;
+}
+async function sendPasswordResetEmail(user, token) {
+  const resetUrl = new URL('/', APP_BASE_URL);
+  resetUrl.searchParams.set('reset', token);
+  const name = escapeHtml(user.name || 'นักกีฬา');
+  const link = escapeHtml(resetUrl.toString());
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: RESET_EMAIL_FROM,
+      to: [user.email],
+      subject: 'ตั้งรหัสผ่านใหม่สำหรับ AI Coach',
+      text: `สวัสดี ${user.name || 'นักกีฬา'}\n\nตั้งรหัสผ่านใหม่ได้ที่ลิงก์นี้ (ลิงก์หมดอายุใน 15 นาที):\n${resetUrl}\n\nหากคุณไม่ได้ขอรีเซ็ตรหัสผ่าน ให้ละเว้นอีเมลนี้`,
+      html: `<div style="font-family:Arial,sans-serif;line-height:1.7;color:#17231c"><h2>ตั้งรหัสผ่านใหม่</h2><p>สวัสดี ${name}</p><p>กดปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ ลิงก์นี้ใช้ได้ครั้งเดียวและหมดอายุใน 15 นาที</p><p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#17392d;color:white;text-decoration:none;border-radius:8px">ตั้งรหัสผ่านใหม่</a></p><p>หากปุ่มใช้ไม่ได้ ให้เปิดลิงก์นี้:<br><a href="${link}">${link}</a></p><p>หากคุณไม่ได้ขอรีเซ็ตรหัสผ่าน ให้ละเว้นอีเมลนี้</p></div>`
+    }),
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    console.error(`Password reset email failed (${response.status}): ${details.slice(0, 400)}`);
+    throw new Error('ส่งอีเมลรีเซ็ตรหัสผ่านไม่สำเร็จ');
+  }
+}
+function passwordResetEmailConfigured() {
+  if (!RESEND_API_KEY || !RESET_EMAIL_FROM || !APP_BASE_URL) return false;
+  try {
+    const base = new URL(APP_BASE_URL);
+    return base.protocol === 'https:' || (process.env.NODE_ENV !== 'production' && base.protocol === 'http:');
+  } catch {
+    return false;
+  }
+}
 function validSport(sport) { return Object.hasOwn(SPORTS, sport); }
 function validFocus(focus) { return Object.hasOwn(FOCUSES, focus); }
 function validatePlan(data) {
@@ -156,6 +210,62 @@ async function handleAuth(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     clearSession(req, res);
     return sendJson(res, 200, { ok: true });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/forgot-password') {
+    let data;
+    try { data = await readJson(req); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
+    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+    if (!validEmail(email)) return sendJson(res, 400, { error: 'กรุณากรอกอีเมลให้ถูกต้อง' });
+    if (!passwordResetEmailConfigured()) {
+      return sendJson(res, 503, { error: 'ระบบส่งอีเมลยังตั้งค่าไม่ครบ กรุณาติดต่อผู้ดูแลระบบ' });
+    }
+    const message = 'หากอีเมลนี้มีบัญชีอยู่ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้ กรุณาตรวจกล่องจดหมายและโฟลเดอร์สแปม';
+    if (!allowPasswordReset(email)) return sendJson(res, 200, { message });
+    const user = database.users.find(item => item.email === email);
+    if (user) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const now = Date.now();
+      database.passwordResets = database.passwordResets.filter(item => item.expiresAt > now && item.userId !== user.id);
+      database.passwordResets.push({ userId: user.id, tokenHash, expiresAt: now + RESET_TOKEN_TTL_MS });
+      saveDatabase();
+      try {
+        await sendPasswordResetEmail(user, rawToken);
+      } catch {
+        database.passwordResets = database.passwordResets.filter(item => item.tokenHash !== tokenHash);
+        saveDatabase();
+      }
+    }
+    return sendJson(res, 200, { message });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/reset-password') {
+    let data;
+    try { data = await readJson(req); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
+    const token = typeof data.token === 'string' ? data.token : '';
+    const password = typeof data.password === 'string' ? data.password : '';
+    if (!/^[a-f0-9]{64}$/i.test(token)) return sendJson(res, 400, { error: 'ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว' });
+    if (password.length < 8 || password.length > 128) return sendJson(res, 400, { error: 'รหัสผ่านต้องมีความยาว 8–128 ตัวอักษร' });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const now = Date.now();
+    const reset = database.passwordResets.find(item => item.tokenHash === tokenHash && item.expiresAt > now);
+    const user = reset && database.users.find(item => item.id === reset.userId);
+    if (!user) {
+      database.passwordResets = database.passwordResets.filter(item => item.expiresAt > now);
+      saveDatabase();
+      return sendJson(res, 400, { error: 'ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว' });
+    }
+    const salt = crypto.randomBytes(16).toString('hex');
+    const derived = await scrypt(password, salt, 64);
+    user.salt = salt;
+    user.passwordHash = derived.toString('hex');
+    database.passwordResets = database.passwordResets.filter(item => item.userId !== user.id);
+    for (const [sessionToken, session] of sessions) {
+      if (session.userId === user.id) sessions.delete(sessionToken);
+    }
+    saveDatabase();
+    return sendJson(res, 200, { message: 'ตั้งรหัสผ่านใหม่สำเร็จ เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้เลย' });
   }
   if (req.method === 'POST' && (url.pathname === '/api/auth/register' || url.pathname === '/api/auth/login')) {
     let data;
@@ -276,7 +386,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, HOST, () => {
   console.log(`AI Coach เปิดแล้วที่ http://localhost:${PORT}`);
-  console.log(`Gemini API: ${GEMINI_API_KEY ? `พร้อม (${MODEL})` : 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน .env'}`);
+  console.log(`Host: ${HOST} · Gemini API: ${GEMINI_API_KEY ? `พร้อม (${MODEL})` : 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY'}`);
 });

@@ -33,24 +33,53 @@ async function api(url, options = {}) {
   }
   return result;
 }
-function showAuth(message = '') {
+function showAuth(message = '', tone = 'error') {
   currentUser = null;
   $('#appShell').classList.add('hidden');
   $('#authShell').classList.remove('hidden');
   setAuthMode('login');
   $('#authError').textContent = message;
+  $('#authError').classList.toggle('success', tone === 'success');
+}
+function showAuthPanel(panel) {
+  $('#authForm').classList.toggle('hidden', panel !== 'auth');
+  document.querySelector('.auth-tabs').classList.toggle('hidden', panel !== 'auth');
+  $('#forgotPasswordForm').classList.toggle('hidden', panel !== 'forgot');
+  $('#resetPasswordForm').classList.toggle('hidden', panel !== 'reset');
 }
 function setAuthMode(mode) {
+  showAuthPanel('auth');
   authMode = mode;
   const registering = mode === 'register';
   $('#authTitle').textContent = registering ? 'สร้างบัญชี AI Coach' : 'ยินดีต้อนรับกลับ';
   $('#authSubtitle').textContent = registering ? 'สร้างบัญชีเพื่อเก็บแผนและประวัติการฝึกของคุณ' : 'เข้าสู่ระบบเพื่อดูแผนและประวัติการฝึกของคุณ';
   $('#authSubmit').textContent = registering ? 'สร้างบัญชีและเริ่มใช้งาน' : 'เข้าสู่ระบบ';
   $('#nameField').classList.toggle('hidden', !registering);
+  $('#forgotPasswordLink').classList.toggle('hidden', registering);
   $('#authName').required = registering;
   $('#authPassword').autocomplete = registering ? 'new-password' : 'current-password';
   document.querySelectorAll('.auth-tab').forEach(button => button.classList.toggle('selected', button.dataset.mode === mode));
   $('#authError').textContent = '';
+  $('#authError').classList.remove('success');
+}
+function showForgotPassword() {
+  showAuthPanel('forgot');
+  $('#authTitle').textContent = 'ลืมรหัสผ่าน';
+  $('#authSubtitle').textContent = 'กรอกอีเมลที่ใช้สมัคร แล้วเราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้';
+  $('#forgotEmail').value = $('#authEmail').value.trim();
+  $('#forgotPasswordMessage').textContent = '';
+  $('#forgotPasswordMessage').classList.remove('success');
+}
+function showResetPassword(token) {
+  currentUser = null;
+  $('#appShell').classList.add('hidden');
+  $('#authShell').classList.remove('hidden');
+  showAuthPanel('reset');
+  $('#authTitle').textContent = 'ตั้งรหัสผ่านใหม่';
+  $('#authSubtitle').textContent = 'ตั้งรหัสผ่านใหม่เพื่อกลับเข้าสู่ AI Coach';
+  $('#resetToken').value = token;
+  $('#resetPasswordMessage').textContent = '';
+  $('#resetPasswordMessage').classList.remove('success');
 }
 function setConnection(ready, text) {
   ['#statusDot', '#topStatusDot'].forEach(selector => {
@@ -149,6 +178,9 @@ function renderAll() {
 }
 
 for (const button of document.querySelectorAll('.auth-tab')) button.addEventListener('click', () => setAuthMode(button.dataset.mode));
+$('#forgotPasswordLink').addEventListener('click', showForgotPassword);
+$('#backToLogin').addEventListener('click', () => setAuthMode('login'));
+$('#resetRequestNewLink').addEventListener('click', showForgotPassword);
 $('#authForm').addEventListener('submit', async event => {
   event.preventDefault();
   const button = $('#authSubmit'); button.disabled = true;
@@ -165,6 +197,55 @@ $('#authForm').addEventListener('submit', async event => {
   } finally {
     button.disabled = false;
     button.textContent = authMode === 'register' ? 'สร้างบัญชีและเริ่มใช้งาน' : 'เข้าสู่ระบบ';
+  }
+});
+$('#forgotPasswordForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('#forgotPasswordSubmit');
+  button.disabled = true;
+  button.textContent = 'กำลังส่ง…';
+  $('#forgotPasswordMessage').textContent = '';
+  $('#forgotPasswordMessage').classList.remove('success');
+  try {
+    const result = await api('/api/auth/forgot-password', {
+      method: 'POST', body: JSON.stringify({ email: $('#forgotEmail').value.trim() })
+    });
+    $('#forgotPasswordMessage').textContent = result.message;
+    $('#forgotPasswordMessage').classList.add('success');
+  } catch (error) {
+    $('#forgotPasswordMessage').textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'ส่งลิงก์ตั้งรหัสผ่านใหม่';
+  }
+});
+$('#resetPasswordForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const password = $('#newPassword').value;
+  const confirmPassword = $('#confirmPassword').value;
+  const message = $('#resetPasswordMessage');
+  message.textContent = '';
+  message.classList.remove('success');
+  if (password !== confirmPassword) {
+    message.textContent = 'รหัสผ่านทั้งสองช่องไม่ตรงกัน';
+    return;
+  }
+  const button = $('#resetPasswordSubmit');
+  button.disabled = true;
+  button.textContent = 'กำลังบันทึก…';
+  try {
+    const result = await api('/api/auth/reset-password', {
+      method: 'POST', body: JSON.stringify({ token: $('#resetToken').value, password })
+    });
+    window.history.replaceState(null, '', window.location.pathname);
+    $('#newPassword').value = '';
+    $('#confirmPassword').value = '';
+    showAuth(result.message, 'success');
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'บันทึกรหัสผ่านใหม่';
   }
 });
 $('#logoutButton').addEventListener('click', async () => {
@@ -235,6 +316,8 @@ async function deleteWorkout(id) {
 }
 
 async function start() {
+  const resetToken = new URLSearchParams(window.location.search).get('reset');
+  if (resetToken !== null) { showResetPassword(resetToken); return; }
   try {
     const result = await api('/api/me');
     currentUser = result.user; showApp(); await loadData();
