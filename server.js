@@ -20,6 +20,7 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const RESET_EMAIL_FROM = process.env.RESET_EMAIL_FROM || '';
 const APP_BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
@@ -62,6 +63,41 @@ function sendJson(res, status, body, extraHeaders = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extraHeaders });
   res.end(JSON.stringify(body));
   return true;
+}
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+function retryDelayMs(response, attempt) {
+  const retryAfter = response.headers.get('retry-after');
+  let serverDelay = 0;
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    serverDelay = Number.isFinite(seconds)
+      ? Math.max(0, seconds * 1000)
+      : Math.max(0, Date.parse(retryAfter) - Date.now());
+  }
+  const backoff = 2000 * (2 ** attempt);
+  return Math.min(10_000, Math.max(backoff, serverDelay)) + Math.floor(Math.random() * 250);
+}
+async function requestGeminiModel(model, input, retries = 2) {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      body: JSON.stringify({
+        model,
+        input,
+        store: false,
+        generation_config: { thinking_level: 'low', max_output_tokens: 1800 }
+      }),
+      signal: AbortSignal.timeout(180_000)
+    });
+    if (response.ok || ![429, 503].includes(response.status) || attempt >= retries) {
+      return { response, model };
+    }
+    const delay = retryDelayMs(response, attempt);
+    console.warn(`Gemini ${model} returned ${response.status}; retry ${attempt + 1}/${retries} in ${delay}ms`);
+    await response.body?.cancel().catch(() => {});
+    await wait(delay);
+  }
 }
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -336,23 +372,19 @@ async function handleApi(req, res, url) {
     const recentWorkouts = database.workouts.filter(item => item.userId === user.id).slice(-14).reverse();
     const lastPlan = database.plans.filter(item => item.userId === user.id).at(-1);
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-        body: JSON.stringify({
-          model: MODEL,
-          input: buildPrompt(data, recentWorkouts, lastPlan),
-          store: false,
-          generation_config: { thinking_level: 'low', max_output_tokens: 1800 }
-        }),
-        signal: AbortSignal.timeout(180_000)
-      });
+      const prompt = buildPrompt(data, recentWorkouts, lastPlan);
+      let { response, model: usedModel } = await requestGeminiModel(MODEL, prompt);
+      if (!response.ok && [429, 503].includes(response.status) && FALLBACK_MODEL !== MODEL) {
+        console.warn(`Gemini ${MODEL} unavailable (${response.status}); trying fallback ${FALLBACK_MODEL}`);
+        ({ response, model: usedModel } = await requestGeminiModel(FALLBACK_MODEL, prompt, 1));
+      }
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
         const providerMessage = detail.error?.message || '';
         if ([400, 401, 403].includes(response.status)) return sendJson(res, 502, { error: 'Gemini ปฏิเสธคำขอ ตรวจสอบ API key และการเปิดใช้ Gemini API' });
-        if (response.status === 404) return sendJson(res, 502, { error: `ไม่พบโมเดล ${MODEL} หรือบัญชีนี้ยังใช้โมเดลไม่ได้` });
+        if (response.status === 404) return sendJson(res, 502, { error: `ไม่พบโมเดล ${usedModel} หรือบัญชีนี้ยังใช้โมเดลไม่ได้` });
         if (response.status === 429) return sendJson(res, 429, { error: 'โควตา Gemini เต็มหรือส่งคำขอถี่เกินไป ตรวจสอบโควตาและค่าใช้บริการ' });
+        if (response.status === 503) return sendJson(res, 503, { error: 'Gemini กำลังมีคำขอหนาแน่น ลองใหม่อีกครั้งในภายหลัง' });
         return sendJson(res, 502, { error: `Gemini API ตอบกลับไม่สำเร็จ (${response.status})${providerMessage ? `: ${providerMessage.slice(0, 220)}` : ''}` });
       }
       const result = await response.json();
@@ -360,7 +392,7 @@ async function handleApi(req, res, url) {
       if (!advice) return sendJson(res, 502, { error: 'โมเดลตอบกลับว่างเปล่า ลองอีกครั้งได้เลย' });
       const plan = { id: crypto.randomUUID(), userId: user.id, sport: data.sport, focus: data.focus, level: data.level, daysPerWeek: data.daysPerWeek, minutesPerSession: data.minutesPerSession, advice, createdAt: new Date().toISOString() };
       database.plans.push(plan); saveDatabase();
-      return sendJson(res, 200, { plan, model: result.model || MODEL });
+      return sendJson(res, 200, { plan, model: result.model || usedModel });
     } catch (error) {
       if (error.name === 'TimeoutError' || error.name === 'AbortError') return sendJson(res, 504, { error: 'Gemini ใช้เวลาตอบนานเกินไป ลองอีกครั้งได้เลย' });
       return sendJson(res, 503, { error: 'เชื่อมต่อ Gemini API ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง' });
