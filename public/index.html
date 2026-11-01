@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#17392d">
+  <title>AI Coach — ผู้ช่วยวางแผนฝึกกีฬา</title>
+  <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <section class="auth-shell" id="authShell">
+    <div class="auth-brand">AI <span>Coach</span></div>
+    <div class="auth-card">
+      <div class="auth-kicker">YOUR PERSONAL TRAINING ASSISTANT</div>
+      <h1 id="authTitle">ยินดีต้อนรับกลับ</h1>
+      <p class="auth-sub" id="authSubtitle">เข้าสู่ระบบเพื่อดูแผนและประวัติการฝึกของคุณ</p>
+      <div class="auth-tabs"><button type="button" class="auth-tab selected" data-mode="login">เข้าสู่ระบบ</button><button type="button" class="auth-tab" data-mode="register">สร้างบัญชี</button></div>
+      <form id="authForm">
+        <label id="nameField" class="hidden">ชื่อที่ใช้แสดง<input id="authName" type="text" maxlength="50" autocomplete="name" placeholder="เช่น ก้อง"></label>
+        <label>อีเมล<input id="authEmail" type="email" required autocomplete="email" placeholder="name@example.com"></label>
+        <label>รหัสผ่าน<input id="authPassword" type="password" required minlength="8" maxlength="128" autocomplete="current-password" placeholder="อย่างน้อย 8 ตัวอักษร"></label>
+        <div class="auth-error" id="authError" role="alert"></div>
+        <button class="button button-primary auth-submit" id="authSubmit" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <div class="auth-foot">บัญชีและประวัติจะถูกเก็บในโปรเจกต์ที่รันบนเครื่องนี้</div>
+    </div>
+    <div class="auth-caption">AI ช่วยวางแผน · คุณเป็นคนเลือกเป้าหมาย</div>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview">AI <span>Coach</span></a>
+      <div class="side-label">เมนูหลัก</div>
+      <nav class="nav">
+        <button class="nav-link active" data-page="overview">▦ <span>ภาพรวม</span></button>
+        <button class="nav-link" data-page="planner">✦ <span>สร้าง / ปรับแผน</span></button>
+        <button class="nav-link" data-page="log">＋ <span>บันทึกการฝึก</span></button>
+        <button class="nav-link" data-page="history">↻ <span>ประวัติ</span></button>
+      </nav>
+      <div class="side-status"><span id="statusDot" class="status-dot"></span><span id="statusText">กำลังตรวจสอบ Gemini…</span></div>
+      <div class="side-user"><div class="avatar" id="userAvatar">A</div><div class="user-copy"><strong id="sideUserName">นักกีฬา</strong><small id="sideUserEmail"></small></div><button class="logout-icon" id="logoutButton" type="button" title="ออกจากระบบ">↪</button></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar"><div><div class="overline" id="todayLabel">AI COACH</div><h1 id="pageTitle">ภาพรวมการฝึก</h1></div><div class="top-user"><span class="status-dot" id="topStatusDot"></span><span id="modelText">Gemini</span><span class="top-divider"></span><span id="topUserName"></span></div></header>
+
+      <section class="page active" id="page-overview">
+        <div class="welcome-banner"><div class="welcome-copy"><span class="tag">✦ AI COACH</span><h2>สวัสดี <span id="welcomeName">นักกีฬา</span> 👋</h2><p>เลือกกีฬา ตั้งเป้าหมาย แล้วให้ AI Coach ช่วยปรับแผนจากประวัติการฝึกของคุณ</p><button class="button button-lime" data-goto="planner" type="button">เริ่มสร้างแผน <span>→</span></button></div><div class="banner-orbit" aria-hidden="true"><span>Coach</span></div></div>
+        <div class="stat-grid">
+          <article class="stat-card"><span class="stat-icon">✦</span><div class="stat-label">แผนที่สร้าง</div><div class="stat-value" id="planCount">0</div><div class="stat-note">บันทึกไว้ในบัญชีของคุณ</div></article>
+          <article class="stat-card"><span class="stat-icon">⏱</span><div class="stat-label">การฝึกที่บันทึก</div><div class="stat-value" id="workoutCount">0</div><div class="stat-note">รายการทั้งหมด</div></article>
+          <article class="stat-card"><span class="stat-icon">◷</span><div class="stat-label">เวลาฝึกรวม</div><div class="stat-value"><span id="totalMinutes">0</span><small> นาที</small></div><div class="stat-note">จากประวัติการฝึก</div></article>
+          <article class="stat-card"><span class="stat-icon">◎</span><div class="stat-label">กีฬาที่ฝึกล่าสุด</div><div class="stat-value sport-value" id="latestSport">—</div><div class="stat-note">อัปเดตตามรายการล่าสุด</div></article>
+        </div>
+        <div class="overview-grid">
+          <section class="panel"><div class="panel-heading"><div><h2>แผนล่าสุดจาก AI Coach</h2><p>แผนที่บันทึกไว้ล่าสุด</p></div><button class="text-link" data-goto="history" type="button">ดูทั้งหมด →</button></div><div id="latestPlan" class="empty-state">ยังไม่มีแผน กด “เริ่มสร้างแผน” เพื่อให้ AI Coach ช่วยจัดแผนแรกของคุณ</div></section>
+          <section class="panel"><div class="panel-heading"><div><h2>การฝึกล่าสุด</h2><p>ความสม่ำเสมอเริ่มจากการบันทึก</p></div><button class="text-link" data-goto="log" type="button">บันทึกเพิ่ม →</button></div><div id="recentWorkouts" class="empty-state">ยังไม่มีบันทึกการฝึก</div></section>
+        </div>
+      </section>
+
+      <section class="page" id="page-planner">
+        <div class="page-intro"><span class="section-tag">01 · AI TRAINING PLAN</span><h2>สร้างหรือปรับแผนการฝึก</h2><p>เลือกกีฬาและจุดเน้น AI Coach จะนำประวัติการฝึกล่าสุดของคุณมาประกอบคำแนะนำ ทุกแผนที่สร้างจะถูกบันทึกไว้</p></div>
+        <div class="planner-grid">
+          <section class="panel"><div class="panel-heading"><div><h3>เป้าหมายของคุณ</h3><p>กรอกข้อมูลให้ตรงกับการฝึกจริง</p></div></div>
+            <form id="planForm" class="form-grid">
+              <label class="wide">เลือกกีฬา<select id="planSport" required>
+                <option value="running">วิ่ง</option><option value="football">ฟุตบอล</option><option value="basketball">บาสเกตบอล</option><option value="badminton">แบดมินตัน</option><option value="fencing">ฟันดาบ</option><option value="swimming">ว่ายน้ำ</option><option value="cycling">ปั่นจักรยาน</option><option value="volleyball">วอลเลย์บอล</option><option value="tennis">เทนนิส</option><option value="hyrox">HYROX</option><option value="strength">เวทเทรนนิง</option><option value="boxing">มวย</option><option value="table_tennis">ปิงปอง</option><option value="martial_arts">ศิลปะการต่อสู้</option>
+              </select></label>
+              <label>ต้องการฝึกอะไร<select id="planFocus" required><option value="endurance">ความอึด</option><option value="speed">ความเร็ว</option><option value="strength">ความแข็งแรง</option><option value="technique">เทคนิค</option><option value="agility">ความคล่องตัว</option><option value="power">พลังระเบิด</option><option value="flexibility">ความยืดหยุ่น</option><option value="conditioning">สมรรถภาพโดยรวม</option><option value="competition">เตรียมแข่งขัน</option><option value="recovery">ฟื้นฟูร่างกาย</option></select></label>
+              <label>ระดับประสบการณ์<select id="planLevel"><option value="beginner">เริ่มต้น</option><option value="intermediate">ปานกลาง</option><option value="advanced">สูง</option></select></label>
+              <label>ฝึกได้กี่วัน/สัปดาห์<select id="planDays"><option value="1">1 วัน</option><option value="2">2 วัน</option><option value="3">3 วัน</option><option value="4" selected>4 วัน</option><option value="5">5 วัน</option><option value="6">6 วัน</option></select></label>
+              <label>เวลาต่อครั้ง (นาที)<input id="planMinutes" type="number" min="15" max="180" value="60" required></label>
+              <label class="wide">อุปกรณ์หรือสถานที่ที่มี<input id="planEquipment" type="text" maxlength="200" placeholder="เช่น สนาม, ดัมเบล, ยางยืด หรือไม่มีอุปกรณ์"></label>
+              <label>นอนเมื่อคืน (ชั่วโมง)<input id="planSleep" type="number" min="0" max="24" step="0.5" value="7" required></label>
+              <label>ความล้าตอนนี้ <span class="range-value"><span id="sorenessNumber">3</span>/10</span><input id="planSoreness" type="range" min="1" max="10" value="3"></label>
+              <label class="wide">อยากให้ AI ปรับอะไรเพิ่มเติม<textarea id="planNote" maxlength="500" rows="3" placeholder="เช่น พักวันพุธ, มีอาการล้าจากเกมเมื่อวาน, อยากเน้นฟุตเวิร์ก"></textarea></label>
+              <div class="wide"><button class="button button-primary" id="generatePlan" type="submit">✦ ให้ AI Coach ช่วยจัดแผน</button><p class="privacy-hint">ใช้ประวัติการฝึก 14 รายการล่าสุดของบัญชีนี้ประกอบการวางแผน</p></div>
+            </form>
+          </section>
+          <section class="panel result-panel"><div class="panel-heading"><div><h3>แผนจาก AI Coach</h3><p>สร้างแผนใหม่แต่ละครั้งจะบันทึกเป็นประวัติ</p></div><span class="ai-chip">GEMINI</span></div><div id="planResult" class="plan-result"><div class="result-placeholder"><span>✦</span><strong>แผนของคุณจะแสดงที่นี่</strong><small>เลือกกีฬาและเป้าหมาย แล้วกดปุ่มสร้างแผน</small></div></div><div id="planSaveStatus" class="save-status" role="status"></div></section>
+        </div>
+      </section>
+
+      <section class="page" id="page-log">
+        <div class="page-intro"><span class="section-tag">02 · TRAINING LOG</span><h2>บันทึกการฝึก</h2><p>บันทึกผลที่ทำจริง เพื่อให้ AI Coach ใช้ช่วยปรับแผนครั้งถัดไป</p></div>
+        <section class="panel form-panel"><div class="panel-heading"><div><h3>เพิ่มรายการฝึก</h3><p>ข้อมูลจะผูกกับบัญชีที่เข้าสู่ระบบ</p></div></div>
+          <form id="workoutForm" class="form-grid">
+            <label>กีฬา<select id="workoutSport"><option value="running">วิ่ง</option><option value="football">ฟุตบอล</option><option value="basketball">บาสเกตบอล</option><option value="badminton">แบดมินตัน</option><option value="fencing">ฟันดาบ</option><option value="swimming">ว่ายน้ำ</option><option value="cycling">ปั่นจักรยาน</option><option value="volleyball">วอลเลย์บอล</option><option value="tennis">เทนนิส</option><option value="hyrox">HYROX</option><option value="strength">เวทเทรนนิง</option><option value="boxing">มวย</option><option value="table_tennis">ปิงปอง</option><option value="martial_arts">ศิลปะการต่อสู้</option></select></label>
+            <label>ประเภทการฝึก<input id="workoutType" maxlength="100" required placeholder="เช่น วิ่งเบา, ฝึกเสิร์ฟ, ฟุตเวิร์ก"></label>
+            <label>เวลาฝึก (นาที)<input id="workoutDuration" type="number" min="1" max="600" value="45" required></label>
+            <label>ระยะทาง (กม.) <span class="optional">ถ้ามี</span><input id="workoutDistance" type="number" min="0" max="300" step="0.1" placeholder="ไม่จำเป็น"></label>
+            <label>ความเหนื่อยหลังฝึก <span class="range-value"><span id="rpeNumber">5</span>/10</span><input id="workoutRpe" type="range" min="1" max="10" value="5"></label>
+            <label class="wide">บันทึกเพิ่มเติม<textarea id="workoutNote" maxlength="300" rows="3" placeholder="เช่น รู้สึกอย่างไร มีอะไรที่อยากพัฒนาต่อ"></textarea></label>
+            <div class="wide form-actions"><button class="button button-secondary" type="submit">บันทึกการฝึก</button><span id="workoutMessage" class="save-status" role="status"></span></div>
+          </form>
+        </section>
+      </section>
+
+      <section class="page" id="page-history">
+        <div class="page-intro"><span class="section-tag">03 · YOUR PROGRESS</span><h2>ประวัติของฉัน</h2><p>ดูแผน AI และรายการฝึกที่บันทึกไว้ในบัญชีนี้</p></div>
+        <section class="panel history-panel"><div class="panel-heading"><div><h3>แผนจาก AI Coach</h3><p>แผนใหม่จะถูกเพิ่มไว้ด้านบน</p></div></div><div id="planHistory" class="history-stack"><div class="empty-state">ยังไม่มีประวัติแผน</div></div></section>
+        <section class="panel history-panel"><div class="panel-heading"><div><h3>ประวัติการฝึก</h3><p>รายการฝึกของคุณ</p></div></div><div id="workoutHistory" class="history-stack"><div class="empty-state">ยังไม่มีประวัติการฝึก</div></div></section>
+      </section>
+      <footer>AI Coach · คำแนะนำเป็นข้อมูลทั่วไป ไม่แทนโค้ชหรือผู้เชี่ยวชาญด้านสุขภาพ</footer>
+    </main>
+  </div>
+</body>
+</html>
